@@ -9,7 +9,7 @@ public static class PdfImageExtractor
 {
     public static List<ExtractedImageInfo> ExtractImages(Stream pdfStream)
     {
-        Syncfusion.Pdf.Parsing.PdfDocumentExtractor documentExtractor = new PdfDocumentExtractor();
+        PdfDocumentExtractor documentExtractor = new PdfDocumentExtractor();
         var images = new List<ExtractedImageInfo>();
         try
         {
