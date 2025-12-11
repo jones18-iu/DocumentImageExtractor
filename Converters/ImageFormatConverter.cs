@@ -26,8 +26,11 @@ public static class ImageFormatConverter
     {
         try
         {
-            // If already PNG, validate and return
-            if (ValidatePngBytes(imageBytes))
+            // Detect the actual image type
+            string detectedMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
+
+            // If already a supported format (PNG, JPEG, or WebP), return as-is without conversion
+            if (Array.Exists(SupportedMediaTypes, t => t.Equals(detectedMediaType, StringComparison.OrdinalIgnoreCase)))
             {
                 return new ConvertedImageResult
                 {
@@ -36,34 +39,13 @@ public static class ImageFormatConverter
                 };
             }
 
+            // Convert unsupported formats to PNG
             byte[] pngBytes;
-
-            // Convert only if not supported
-            if (!Array.Exists(SupportedMediaTypes, t => t.Equals(mediaType, StringComparison.OrdinalIgnoreCase)))
-            {
-                using var inputStream = new MemoryStream(imageBytes);
-                using var image = Image.FromStream(inputStream);
-                using var outputStream = new MemoryStream();
-                image.Save(outputStream, ImageFormat.Png);
-                pngBytes = outputStream.ToArray();
-            }
-            else
-            {
-                using var inStream = new MemoryStream(imageBytes);
-                using var img = Image.FromStream(inStream);
-                using var outStream = new MemoryStream();
-                img.Save(outStream, ImageFormat.Png);
-                pngBytes = outStream.ToArray();
-            }
-
-            if (!ValidatePngBytes(pngBytes))
-            {
-                return new ConvertedImageResult
-                {
-                    Success = false,
-                    ErrorMessage = "Image conversion to PNG failed validation."
-                };
-            }
+            using var inputStream = new MemoryStream(imageBytes);
+            using var image = Image.FromStream(inputStream);
+            using var outputStream = new MemoryStream();
+            image.Save(outputStream, ImageFormat.Png);
+            pngBytes = outputStream.ToArray();
 
             return new ConvertedImageResult
             {
@@ -79,18 +61,5 @@ public static class ImageFormatConverter
                 ErrorMessage = $"Image conversion error: {ex.Message}"
             };
         }
-    }
-
-    private static bool ValidatePngBytes(byte[] bytes)
-    {
-        return bytes.Length > 7 &&
-            bytes[0] == 0x89 &&
-            bytes[1] == 0x50 &&
-            bytes[2] == 0x4E &&
-            bytes[3] == 0x47 &&
-            bytes[4] == 0x0D &&
-            bytes[5] == 0x0A &&
-            bytes[6] == 0x1A &&
-            bytes[7] == 0x0A;
     }
 }

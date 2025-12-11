@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using Syncfusion.Pdf.Parsing;
 
@@ -17,11 +18,13 @@ public static class PdfImageExtractor
 
             Stream[] imageStreams = documentExtractor.ExtractImages();
 
+
             foreach (var stream in imageStreams)
             {
+                using var img = Image.FromStream(stream);
                 using (var ms = new MemoryStream())
                 {
-                    stream.CopyTo(ms);
+                    img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
                     var imageBytes = ms.ToArray();
                     var mediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
                     images.Add(new ExtractedImageInfo

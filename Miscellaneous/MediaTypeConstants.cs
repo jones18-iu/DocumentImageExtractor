@@ -27,6 +27,12 @@ public static partial class Constants
         public const string Bmp = "image/bmp";
         public const string Tiff = "image/tiff";
         public const string Webp = "image/webp";
+        public const string Icon = "image/x-icon";
+        public const string Svg = "image/svg+xml";
+        public const string Emf = "image/emf";
+        public const string Wmf = "image/wmf";
+        public const string Dds = "image/vnd.ms-dds";
+        public const string Jpeg2000 = "image/jp2";
 
         //Media Type Not Found
         public const string MediaTypeUnknown = "**Unknown**";

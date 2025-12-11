@@ -14,9 +14,6 @@
     <None Update="TestData\Documents\Doc\Image processing test doc.doc">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="TestData\Documents\Pdf\Image processing test pdf.pdf">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="TestData\Documents\Pptx\Image processing test pptx.pptx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -28,7 +25,6 @@
   <ItemGroup>
     <Folder Include="Output\DocImages\" />
     <Folder Include="Output\DocxImages\" />
-    <Folder Include="Output\PptxDocs\" />
     <Folder Include="Output\PptImages\" />
     <Folder Include="Output\PdfImages\" />
     <Folder Include="Output\PptxImages\" />

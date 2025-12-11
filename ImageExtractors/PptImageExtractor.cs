@@ -25,46 +25,14 @@ public static class PptImageExtractor
                     using (var ms = new MemoryStream())
                     {
                         pictureRecord.DumpToStream(ms);
-                        var fullBytes = ms.ToArray();
-                        // Remove the first 17 bytes (header)
-                        if (fullBytes.Length > 17)
-                            imageBytes = new byte[fullBytes.Length - 17];
-                        else
-                            imageBytes = Array.Empty<byte>();
-                        if (fullBytes.Length > 17)
-                            Array.Copy(fullBytes, 17, imageBytes, 0, imageBytes.Length);
+                        imageBytes = ms.ToArray();
                     }
 
                     //run the image bytes through the MediaTypeDetector to determine the actual image type
                     if (imageBytes != null)
                     {
-                        imageMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
-                    }
-
-                    //switch (pictureRecord.TypeCode)
-                    //{
-                    //    case 61469: // JPEG
-                    //        imageMediaType = Constants.MediaTypeConstants.Jpeg;
-                    //        imageBytes = new byte[pictureRecord.RawData.Length - pictureRecord.HeaderSize];
-                    //        Array.Copy(pictureRecord.RawData, pictureRecord.HeaderSize, imageBytes, 0, imageBytes.Length);
-                    //        break;
-                    //    case 61470: // PNG
-                    //        imageMediaType = Constants.MediaTypeConstants.Png;
-                    //        imageBytes = new byte[pictureRecord.RawData.Length - pictureRecord.HeaderSize];
-                    //        Array.Copy(pictureRecord.RawData, pictureRecord.HeaderSize, imageBytes, 0, imageBytes.Length);
-                    //        break;
-                    //    case 61472: // TIFF
-                    //        imageMediaType = Constants.MediaTypeConstants.Tiff;
-                    //        imageBytes = new byte[pictureRecord.RawData.Length - pictureRecord.HeaderSize];
-                    //        Array.Copy(pictureRecord.RawData, pictureRecord.HeaderSize, imageBytes, 0, imageBytes.Length);
-                    //        break;
-                    //    default:
-                    //        continue;
-                    //}
-
-                    if (imageBytes != null)
-                    {
-                        images.Add(new ExtractedImageInfo
+                       imageMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
+                       images.Add(new ExtractedImageInfo
                         {
                             ImageBytes = imageBytes,
                             ImageMediaType = imageMediaType

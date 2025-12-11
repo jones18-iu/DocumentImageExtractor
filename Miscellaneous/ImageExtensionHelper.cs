@@ -12,7 +12,13 @@ public static class ImageExtensionHelper
             Constants.MediaTypeConstants.Bmp => ".bmp",
             Constants.MediaTypeConstants.Tiff => ".tiff",
             Constants.MediaTypeConstants.Webp => ".webp",
-            _ => ".bin"
+            Constants.MediaTypeConstants.Icon => ".ico",
+            Constants.MediaTypeConstants.Svg => ".svg",
+            Constants.MediaTypeConstants.Emf => ".emf",
+            Constants.MediaTypeConstants.Wmf => ".wmf",
+            Constants.MediaTypeConstants.Dds => ".dds",
+            Constants.MediaTypeConstants.Jpeg2000 => ".jp2",
+            _ => ".unknown"
         };
     }
 }

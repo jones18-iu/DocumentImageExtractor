@@ -21,72 +21,134 @@ public static class MimeTypeDetector
     /// <summary>
     /// Detects common image MIME types from byte signatures.
     /// Accuracy and limitations:
-    /// - Matches JPEG/PNG/GIF/BMP/TIFF/WebP via well-known magic numbers.
+    /// - Matches JPEG/PNG/GIF/BMP/TIFF/WebP/ICO/SVG/JFIF/EMF/WMF/DDS/JPEG2000 via well-known magic numbers.
     /// - Returns "**Unknown**" if unknown.
     /// - This is heuristic-only; uncommon or corrupted images may be misclassified or missed.
+    /// - Scans up to 2MB for magic number (for large images with header/preamble)
     /// </summary>
     /// <remarks>
     /// Expected byte signatures:
     /// JPEG: 255, 216, 255        (0xFF, 0xD8, 0xFF)
+    /// JFIF: 255, 216, 255, 224   (0xFF, 0xD8, 0xFF, 0xE0)
+    /// EXIF: 255, 216, 255, 225   (0xFF, 0xD8, 0xFF, 0xE1)
     /// PNG: 137, 80, 78, 71       (0x89, 0x50, 0x4E, 0x47)
     /// GIF: 71, 73, 70            (0x47, 0x49, 0x46)
     /// BMP: 66, 77                (0x42, 0x4D)
     /// TIFF (LE): 73, 73, 42, 0   (0x49, 0x49, 0x2A, 0x00)
     /// TIFF (BE): 77, 77, 0, 42   (0x4D, 0x4D, 0x00, 0x2A)
     /// WebP: 82, 73, 70, 70, ...  (0x52, 0x49, 0x46, 0x46, ... "WEBP" at offset 8)
+    /// ICO: 0, 0, 1, 0            (0x00, 0x00, 0x01, 0x00)
+    /// SVG: 60, 115, 118, 103     (0x3C, 0x73, 0x76, 0x67 - "<svg")
+    /// EMF: 1, 0, 0, 0            (0x01, 0x00, 0x00, 0x00)
+    /// WMF: 215, 205, 198, 154    (0xD7, 0xCD, 0xC6, 0x9A)
+    /// DDS: 32, 83, 68, 68        (0x20, 0x53, 0x44, 0x44 - "DDS ")
+    /// JPEG2000: 0, 0, 0, 12, 106, 80, 32, 32 (0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20)
     /// </remarks>
     /// <param name="bytes">Raw file bytes.</param>
     /// <returns>
-    /// One of: "image/jpeg", "image/png", "image/gif", "image/bmp", "image/tiff", "image/webp",
+    /// One of: "image/jpeg", "image/png", "image/gif", "image/bmp", "image/tiff", "image/webp", "image/x-icon", "image/svg+xml", "image/emf", "image/wmf", "image/vnd.ms-dds", "image/jp2",
     /// or "**Unknown**" if undetermined.
     /// </returns>
     public static string GetImageMediaType(byte[] bytes)
     {
-        // JPEG: Starts with FF D8 FF
-        if (bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
-        {
+        int scanLimit = Math.Min(bytes.Length, 2 * 1024 * 1024); // Scan up to 2MB
+
+        // JFIF/EXIF (more specific JPEG variants): FF D8 FF E0 or FF D8 FF E1
+        if (ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, scanLimit) ||
+            ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF, 0xE1 }, scanLimit))
             return Constants.MediaTypeConstants.Jpeg;
-        }
+
+        // JPEG: Starts with FF D8 FF
+        if (ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF }, scanLimit))
+            return Constants.MediaTypeConstants.Jpeg;
 
         // PNG: Starts with 89 50 4E 47
-        if (bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
-        {
+        if (ContainsSequence(bytes, new byte[] { 0x89, 0x50, 0x4E, 0x47 }, scanLimit))
             return Constants.MediaTypeConstants.Png;
-        }
 
         // GIF: Starts with 47 49 46 ("GIF")
-        if (bytes.Length > 6 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46)
-        {
+        if (ContainsSequence(bytes, new byte[] { 0x47, 0x49, 0x46 }, scanLimit))
             return Constants.MediaTypeConstants.Gif;
-        }
 
         // BMP: Starts with 42 4D ("BM")
-        if (bytes.Length > 1 && bytes[0] == 0x42 && bytes[1] == 0x4D)
-        {
+        if (ContainsSequence(bytes, new byte[] { 0x42, 0x4D }, scanLimit))
             return Constants.MediaTypeConstants.Bmp;
-        }
 
         // TIFF: Starts with either 49 49 2A 00 (little endian) or 4D 4D 00 2A (big endian)
-        if (bytes.Length > 3 &&
-            ((bytes[0] == 0x49 && bytes[1] == 0x49 && bytes[2] == 0x2A && bytes[3] == 0x00) ||
-             (bytes[0] == 0x4D && bytes[1] == 0x4D && bytes[2] == 0x00 && bytes[3] == 0x2A)))
-        {
+        if (ContainsSequence(bytes, new byte[] { 0x49, 0x49, 0x2A, 0x00 }, scanLimit) ||
+            ContainsSequence(bytes, new byte[] { 0x4D, 0x4D, 0x00, 0x2A }, scanLimit))
             return Constants.MediaTypeConstants.Tiff;
-        }
 
         // WebP: Starts with "RIFF" (52 49 46 46) and "WEBP" (57 45 42 50) at offset 8
-        if (bytes.Length > 11 &&
-            bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 && // "RIFF"
-            bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) // "WEBP"
-        {
+        if (ContainsWebPSignature(bytes, scanLimit))
             return Constants.MediaTypeConstants.Webp;
-        }
+
+        // ICO: Starts with 00 00 01 00
+        if (ContainsSequence(bytes, new byte[] { 0x00, 0x00, 0x01, 0x00 }, scanLimit))
+            return Constants.MediaTypeConstants.Icon;
+
+        // SVG: Starts with "<svg" (3C 73 76 67)
+        if (ContainsSequence(bytes, new byte[] { 0x3C, 0x73, 0x76, 0x67 }, scanLimit))
+            return Constants.MediaTypeConstants.Svg;
+
+        // EMF (Enhanced Metafile): Starts with 01 00 00 00
+        if (ContainsSequence(bytes, new byte[] { 0x01, 0x00, 0x00, 0x00 }, scanLimit))
+            return Constants.MediaTypeConstants.Emf;
+
+        // WMF (Windows Metafile): Starts with D7 CD C6 9A
+        if (ContainsSequence(bytes, new byte[] { 0xD7, 0xCD, 0xC6, 0x9A }, scanLimit))
+            return Constants.MediaTypeConstants.Wmf;
+
+        // DDS (DirectDraw Surface): Starts with "DDS " (20 53 44 44)
+        if (ContainsSequence(bytes, new byte[] { 0x44, 0x44, 0x53, 0x20 }, scanLimit))
+            return Constants.MediaTypeConstants.Dds;
+
+        // JPEG2000: Starts with 00 00 00 0C 6A 50 20 20
+        if (ContainsSequence(bytes, new byte[] { 0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20 }, scanLimit))
+            return Constants.MediaTypeConstants.Jpeg2000;
 
         // Unknown type
         return Constants.MediaTypeConstants.MediaTypeUnknown;
-      
     }
 
+    /// <summary>
+    /// Searches for a byte sequence anywhere within the scan limit.
+    /// </summary>
+    private static bool ContainsSequence(byte[] bytes, byte[] sequence, int scanLimit)
+    {
+        if (bytes.Length < sequence.Length)
+            return false;
+
+        for (int i = 0; i <= Math.Min(scanLimit, bytes.Length) - sequence.Length; i++)
+        {
+            bool match = true;
+            for (int j = 0; j < sequence.Length; j++)
+            {
+                if (bytes[i + j] != sequence[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Searches for WebP signature: "RIFF" followed by "WEBP" 4 bytes later.
+    /// </summary>
+    private static bool ContainsWebPSignature(byte[] bytes, int scanLimit)
+    {
+        for (int i = 0; i <= Math.Min(scanLimit, bytes.Length) - 12; i++)
+        {
+            if (bytes[i] == 0x52 && bytes[i + 1] == 0x49 && bytes[i + 2] == 0x46 && bytes[i + 3] == 0x46 && // "RIFF"
+                bytes[i + 8] == 0x57 && bytes[i + 9] == 0x45 && bytes[i + 10] == 0x42 && bytes[i + 11] == 0x50) // "WEBP"
+                return true;
+        }
+        return false;
+    }
     /// <summary>
     /// Detects the MIME type of common document formats (PDF, legacy Office, OOXML) using byte signatures.
     /// 
