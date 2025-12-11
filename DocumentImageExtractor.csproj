@@ -23,11 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Output\DocImages\" />
-    <Folder Include="Output\DocxImages\" />
-    <Folder Include="Output\PptImages\" />
-    <Folder Include="Output\PdfImages\" />
-    <Folder Include="Output\PptxImages\" />
     <Folder Include="TestData\Documents\Doc\" />
     <Folder Include="TestData\Documents\Pptx\" />
   </ItemGroup>
