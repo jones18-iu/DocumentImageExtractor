@@ -4,10 +4,11 @@ namespace LegacyPowerPointGetImages;
 
 public class ConvertedImageResult
 {
-    public bool Success { get; set; }
+    public string ConversionStatus { get; set; } = string.Empty;
     public byte[]? ImageBytes { get; set; }
-    public string Extension { get; set; } = ".png";
     public string? ErrorMessage { get; set; }
+    public string OriginalMediaType { get; set; } = string.Empty;
+    public bool ConversionRequired { get; set; }
 }
 
 public static class ImageFormatConverter
@@ -32,12 +33,14 @@ public static class ImageFormatConverter
             {
                 return new ConvertedImageResult
                 {
-                    Success = true,
+                    ConversionStatus = "Not Required",
                     ImageBytes = imageBytes,
-                    Extension = GetDefaultExtension(detectedMediaType)
+                    OriginalMediaType = detectedMediaType,
+                    ConversionRequired = false
                 };
             }
 
+            // For all other formats, conversion is required
             // Handle GIF conversion
             if (detectedMediaType == Constants.MediaTypeConstants.Gif)
             {
@@ -46,8 +49,10 @@ public static class ImageFormatConverter
                 {
                     return new ConvertedImageResult
                     {
-                        Success = false,
-                        ErrorMessage = "Failed to decode GIF image with SkiaSharp."
+                        ConversionStatus = "Failed",
+                        ErrorMessage = "Failed to decode GIF image with SkiaSharp.",
+                        OriginalMediaType = detectedMediaType,
+                        ConversionRequired = true
                     };
                 }
                 using var image = SKImage.FromBitmap(bitmap);
@@ -56,15 +61,18 @@ public static class ImageFormatConverter
                 {
                     return new ConvertedImageResult
                     {
-                        Success = false,
-                        ErrorMessage = "Failed to encode GIF as PNG with SkiaSharp."
+                        ConversionStatus = "Failed",
+                        ErrorMessage = "Failed to encode GIF as PNG with SkiaSharp.",
+                        OriginalMediaType = detectedMediaType,
+                        ConversionRequired = true
                     };
                 }
                 return new ConvertedImageResult
                 {
-                    Success = true,
+                    ConversionStatus = "Success",
                     ImageBytes = data.ToArray(),
-                    Extension = ".png"
+                    OriginalMediaType = detectedMediaType,
+                    ConversionRequired = true
                 };
             }
 
@@ -76,8 +84,10 @@ public static class ImageFormatConverter
                 {
                     return new ConvertedImageResult
                     {
-                        Success = false,
-                        ErrorMessage = "Failed to decode TIFF image with SkiaSharp."
+                        ConversionStatus = "Failed",
+                        ErrorMessage = "Failed to decode TIFF image with SkiaSharp.",
+                        OriginalMediaType = detectedMediaType,
+                        ConversionRequired = true
                     };
                 }
                 using var image = SKImage.FromBitmap(bitmap);
@@ -86,15 +96,18 @@ public static class ImageFormatConverter
                 {
                     return new ConvertedImageResult
                     {
-                        Success = false,
-                        ErrorMessage = "Failed to encode TIFF as PNG with SkiaSharp."
+                        ConversionStatus = "Failed",
+                        ErrorMessage = "Failed to encode TIFF as PNG with SkiaSharp.",
+                        OriginalMediaType = detectedMediaType,
+                        ConversionRequired = true
                     };
                 }
                 return new ConvertedImageResult
                 {
-                    Success = true,
+                    ConversionStatus = "Success",
                     ImageBytes = data.ToArray(),
-                    Extension = ".png"
+                    OriginalMediaType = detectedMediaType,
+                    ConversionRequired = true
                 };
             }
 
@@ -104,8 +117,10 @@ public static class ImageFormatConverter
             {
                 return new ConvertedImageResult
                 {
-                    Success = false,
-                    ErrorMessage = $"Failed to decode {detectedMediaType} image with SkiaSharp."
+                    ConversionStatus = "Failed",
+                    ErrorMessage = $"Failed to decode {detectedMediaType} image with SkiaSharp.",
+                    OriginalMediaType = detectedMediaType,
+                    ConversionRequired = true
                 };
             }
             using var genericImage = SKImage.FromBitmap(genericBitmap);
@@ -114,36 +129,29 @@ public static class ImageFormatConverter
             {
                 return new ConvertedImageResult
                 {
-                    Success = false,
-                    ErrorMessage = $"Failed to encode {detectedMediaType} as PNG with SkiaSharp."
+                    ConversionStatus = "Failed",
+                    ErrorMessage = $"Failed to encode {detectedMediaType} as PNG with SkiaSharp.",
+                    OriginalMediaType = detectedMediaType,
+                    ConversionRequired = true
                 };
             }
             return new ConvertedImageResult
             {
-                Success = true,
+                ConversionStatus = "Success",
                 ImageBytes = genericData.ToArray(),
-                Extension = ".png"
+                OriginalMediaType = detectedMediaType,
+                ConversionRequired = true
             };
         }
         catch (Exception ex)
         {
             return new ConvertedImageResult
             {
-                Success = false,
-                ErrorMessage = $"Image conversion error: {ex.Message}"
+                ConversionStatus = "Failed",
+                ErrorMessage = $"Image conversion error: {ex.Message}",
+                OriginalMediaType = mediaType,
+                ConversionRequired = true
             };
         }
-    }
-
-    private static string GetDefaultExtension(string mediaType)
-    {
-        return mediaType switch
-        {
-            var t when t.Equals(Constants.MediaTypeConstants.Png, StringComparison.OrdinalIgnoreCase) => ".png",
-            var t when t.Equals(Constants.MediaTypeConstants.Jpeg, StringComparison.OrdinalIgnoreCase) => ".jpg",
-            var t when t.Equals(Constants.MediaTypeConstants.Webp, StringComparison.OrdinalIgnoreCase) => ".webp",
-            var t when t.Equals(Constants.MediaTypeConstants.Bmp, StringComparison.OrdinalIgnoreCase) => ".bmp",
-            _ => ".png"
-        };
     }
 }

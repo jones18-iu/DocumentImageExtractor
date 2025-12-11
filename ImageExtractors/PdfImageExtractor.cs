@@ -15,18 +15,32 @@ public static class PdfImageExtractor
 
             Stream[] imageStreams = documentExtractor.ExtractImages();
 
-
             foreach (var stream in imageStreams)
             {
                 var img = Image.FromStream(stream);
                 var mediaType = MimeTypeDetector.GetImageMediaType(img.ImageData);
-                using (var ms = new MemoryStream())
+                var conversion = ImageFormatConverter.ConvertToPng(img.ImageData, mediaType);
+                if ((conversion.ConversionStatus == "Success" || conversion.ConversionStatus == "Not Required") && conversion.ImageBytes != null)
                 {
-                   
                     images.Add(new ExtractedImageInfo
                     {
-                        ImageBytes = img.ImageData,
-                        ImageMediaType = mediaType
+                        ImageBytes = conversion.ImageBytes,
+                        ImageMediaType = conversion.ConversionRequired ? Constants.MediaTypeConstants.Png : mediaType,
+                        ConversionStatus = conversion.ConversionStatus,
+                        OriginalMediaType = conversion.OriginalMediaType,
+                        ConversionRequired = conversion.ConversionRequired
+                    });
+                }
+                else
+                {
+                    images.Add(new ExtractedImageInfo
+                    {
+                        ImageBytes = null,
+                        ImageMediaType = mediaType,
+                        ConversionStatus = conversion.ConversionStatus,
+                        ConversionError = conversion.ErrorMessage,
+                        OriginalMediaType = conversion.OriginalMediaType,
+                        ConversionRequired = conversion.ConversionRequired
                     });
                 }
             }
@@ -88,20 +102,34 @@ public static class PdfImageExtractor
                     int imageCount = 0;
                     foreach (var image in images)
                     {
-                        var conversion = ImageFormatConverter.ConvertToPng(image.ImageBytes, image.ImageMediaType);
                         imageCount++;
-                        string fileName = Path.GetFileNameWithoutExtension(pdfFile);
-                        string imagePath = Path.Combine(pdfOutputDir, $"{fileName}_Image_{imageCount}{conversion.Extension}");
-
-                        if (conversion.Success && conversion.ImageBytes != null)
+                        string extension = ImageExtensionHelper.GetImageExtension(image.ImageMediaType);
+                        Console.WriteLine("  ----------------------------------------");
+                        Console.WriteLine($"  Image {imageCount}:");
+                        Console.WriteLine($"    Original Media Type: {image.OriginalMediaType}");
+                        Console.WriteLine($"    Current Media Type: {image.ImageMediaType}");
+                        Console.WriteLine($"    Extension: {extension}");
+                        Console.WriteLine($"    Conversion Required: {image.ConversionRequired}");
+                        Console.WriteLine($"    Conversion Status: {image.ConversionStatus}");
+                        if (!string.IsNullOrEmpty(image.ConversionError))
                         {
-                            File.WriteAllBytes(imagePath, conversion.ImageBytes);
-                            Console.WriteLine($"    Saved converted image {imageCount}: {Path.GetFileName(imagePath)}");
+                            Console.WriteLine($"    Conversion Error: {image.ConversionError}");
+                        }
+                        Console.WriteLine($"    Image Size: {(image.ImageBytes != null ? image.ImageBytes.Length : 0)} bytes");
+                        
+                        string fileName = Path.GetFileNameWithoutExtension(pdfFile);
+                        string imagePath = Path.Combine(pdfOutputDir, $"{fileName}_Image_{imageCount}{extension}");
+
+                        if ((image.ConversionStatus == "Success" || image.ConversionStatus == "Not Required") && image.ImageBytes != null)
+                        {
+                            File.WriteAllBytes(imagePath, image.ImageBytes);
+                            Console.WriteLine($"    Saved: {Path.GetFileName(imagePath)}");
                         }
                         else
                         {
-                            Console.WriteLine($"    Conversion failed for image {imageCount}. Original image type: {image.ImageMediaType}. Skipping write of original.");
+                            Console.WriteLine($"    Skipped: {(image.ImageBytes == null ? "Unsupported format" : "Conversion failed")}");
                         }
+                        Console.WriteLine("  ----------------------------------------");
                     }
                     Console.WriteLine();
                 }

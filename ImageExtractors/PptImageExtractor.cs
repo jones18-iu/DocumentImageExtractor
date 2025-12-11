@@ -12,6 +12,8 @@ public static class PptImageExtractor
         var images = new List<ExtractedImageInfo>();
         try
         {
+
+            throw new NotImplementedException("PPT image extraction does not work.");
             using var reader = new StructuredStorageReader(pptStream);
             var pptDoc = new PowerpointDocument(reader);
 
@@ -19,69 +21,35 @@ public static class PptImageExtractor
             {
                 foreach (var pictureRecord in pptDoc.PicturesContainer._pictures.Values)
                 {
-                    // Process only RawData and avoid DumpToStream
                     if (pictureRecord.RawData == null || pictureRecord.RawData.Length == 0)
                     {
                         continue;
                     }
 
                     var rawBytes = pictureRecord.RawData;
-
-                    // Try SkiaSharp using encoded data helpers first
-                    bool processed = false;
-                    try
+                    var mediaType = MimeTypeDetector.GetImageMediaType(rawBytes);
+                    var conversion = ImageFormatConverter.ConvertToPng(rawBytes, mediaType);
+                    if ((conversion.ConversionStatus == "Success" || conversion.ConversionStatus == "Not Required") && conversion.ImageBytes != null)
                     {
-                        using var skImage = SKImage.FromEncodedData(rawBytes);
-                        if (skImage != null)
-                        {
-                            using var skPng = skImage.Encode(SKEncodedImageFormat.Png, 100);
-                            if (skPng != null)
-                            {
-                                images.Add(new ExtractedImageInfo
-                                {
-                                    ImageBytes = skPng.ToArray(),
-                                    ImageMediaType = Constants.MediaTypeConstants.Png
-                                });
-                                processed = true;
-                            }
-                        }
-                        if (!processed)
-                        {
-                            using var mem = new SKMemoryStream(rawBytes);
-                            using var codec = SKCodec.Create(mem);
-                            if (codec != null)
-                            {
-                                using var skBitmap = SKBitmap.Decode(codec);
-                                if (skBitmap != null)
-                                {
-                                    using var skImage2 = SKImage.FromBitmap(skBitmap);
-                                    using var skPng2 = skImage2.Encode(SKEncodedImageFormat.Png, 100);
-                                    if (skPng2 != null)
-                                    {
-                                        images.Add(new ExtractedImageInfo
-                                        {
-                                            ImageBytes = skPng2.ToArray(),
-                                            ImageMediaType = Constants.MediaTypeConstants.Png
-                                        });
-                                        processed = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // ignore and fall back
-                    }
-
-                    if (!processed)
-                    {
-                        // Fall back to media type detection on RawData and return original bytes
-                        var mediaType = MimeTypeDetector.GetImageMediaType(rawBytes);
                         images.Add(new ExtractedImageInfo
                         {
-                            ImageBytes = rawBytes,
-                            ImageMediaType = mediaType
+                            ImageBytes = conversion.ImageBytes,
+                            ImageMediaType = conversion.ConversionRequired ? Constants.MediaTypeConstants.Png : mediaType,
+                            ConversionStatus = conversion.ConversionStatus,
+                            OriginalMediaType = conversion.OriginalMediaType,
+                            ConversionRequired = conversion.ConversionRequired
+                        });
+                    }
+                    else
+                    {
+                        images.Add(new ExtractedImageInfo
+                        {
+                            ImageBytes = null,
+                            ImageMediaType = mediaType,
+                            ConversionStatus = conversion.ConversionStatus,
+                            ConversionError = conversion.ErrorMessage,
+                            OriginalMediaType = conversion.OriginalMediaType,
+                            ConversionRequired = conversion.ConversionRequired
                         });
                     }
                 }
@@ -145,21 +113,34 @@ public static class PptImageExtractor
                     int imageCount = 0;
                     foreach (var image in images)
                     {
-                        // Use SkiaSharp via ImageFormatConverter to convert to PNG
-                        var conversion = ImageFormatConverter.ConvertToPng(image.ImageBytes, image.ImageMediaType);
                         imageCount++;
-                        string fileName = Path.GetFileNameWithoutExtension(pptFile);
-                        string imagePath = Path.Combine(pptOutputDir, $"{fileName}_Image_{imageCount}{conversion.Extension}");
-
-                        if (conversion.Success && conversion.ImageBytes != null)
+                        string extension = ImageExtensionHelper.GetImageExtension(image.ImageMediaType);
+                        Console.WriteLine("  ----------------------------------------");
+                        Console.WriteLine($"  Image {imageCount}:");
+                        Console.WriteLine($"    Original Media Type: {image.OriginalMediaType}");
+                        Console.WriteLine($"    Current Media Type: {image.ImageMediaType}");
+                        Console.WriteLine($"    Extension: {extension}");
+                        Console.WriteLine($"    Conversion Required: {image.ConversionRequired}");
+                        Console.WriteLine($"    Conversion Status: {image.ConversionStatus}");
+                        if (!string.IsNullOrEmpty(image.ConversionError))
                         {
-                            File.WriteAllBytes(imagePath, conversion.ImageBytes);
-                            Console.WriteLine($"    Saved converted image {imageCount}: {Path.GetFileName(imagePath)}");
+                            Console.WriteLine($"    Conversion Error: {image.ConversionError}");
+                        }
+                        Console.WriteLine($"    Image Size: {(image.ImageBytes != null ? image.ImageBytes.Length : 0)} bytes");
+                        
+                        string fileName = Path.GetFileNameWithoutExtension(pptFile);
+                        string imagePath = Path.Combine(pptOutputDir, $"{fileName}_Image_{imageCount}{extension}");
+
+                        if ((image.ConversionStatus == "Success" || image.ConversionStatus == "Not Required") && image.ImageBytes != null)
+                        {
+                            File.WriteAllBytes(imagePath, image.ImageBytes);
+                            Console.WriteLine($"    Saved: {Path.GetFileName(imagePath)}");
                         }
                         else
                         {
-                            Console.WriteLine($"    Conversion failed for image {imageCount}. Original image type: {image.ImageMediaType}. Skipping write of original.");
+                            Console.WriteLine($"    Skipped: {(image.ImageBytes == null ? "Unsupported format" : "Conversion failed")}");
                         }
+                        Console.WriteLine("  ----------------------------------------");
                     }
                     Console.WriteLine();
                 }
