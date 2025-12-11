@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
+using Syncfusion.Drawing;
 using Syncfusion.Pdf.Parsing;
 
 namespace LegacyPowerPointGetImages;
@@ -21,15 +18,14 @@ public static class PdfImageExtractor
 
             foreach (var stream in imageStreams)
             {
-                using var img = Image.FromStream(stream);
+                var img = Image.FromStream(stream);
+                var mediaType = MimeTypeDetector.GetImageMediaType(img.ImageData);
                 using (var ms = new MemoryStream())
                 {
-                    img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    var imageBytes = ms.ToArray();
-                    var mediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
+                   
                     images.Add(new ExtractedImageInfo
                     {
-                        ImageBytes = imageBytes,
+                        ImageBytes = img.ImageData,
                         ImageMediaType = mediaType
                     });
                 }
@@ -93,34 +89,26 @@ public static class PdfImageExtractor
                     foreach (var image in images)
                     {
                         var conversion = ImageFormatConverter.ConvertToPng(image.ImageBytes, image.ImageMediaType);
-                        string extension;
-                        byte[] bytesToWrite;
+                        imageCount++;
+                        string fileName = Path.GetFileNameWithoutExtension(pdfFile);
+                        string imagePath = Path.Combine(pdfOutputDir, $"{fileName}_Image_{imageCount}{conversion.Extension}");
 
                         if (conversion.Success && conversion.ImageBytes != null)
                         {
-                            extension = conversion.Extension;
-                            bytesToWrite = conversion.ImageBytes;
+                            File.WriteAllBytes(imagePath, conversion.ImageBytes);
+                            Console.WriteLine($"    Saved converted image {imageCount}: {Path.GetFileName(imagePath)}");
                         }
                         else
                         {
-                            if (!conversion.Success)
-                                Console.WriteLine($"    ! Conversion failed: {conversion.ErrorMessage}");
-                            extension = ImageExtensionHelper.GetImageExtension(image.ImageMediaType);
-                            bytesToWrite = image.ImageBytes;
+                            Console.WriteLine($"    Conversion failed for image {imageCount}. Original image type: {image.ImageMediaType}. Skipping write of original.");
                         }
-
-                        imageCount++;
-                        string fileName = Path.GetFileNameWithoutExtension(pdfFile);
-                        string imagePath = Path.Combine(pdfOutputDir, $"{fileName}_Image_{imageCount}{extension}");
-                        File.WriteAllBytes(imagePath, bytesToWrite);
-                        Console.WriteLine($"    ? Saved image {imageCount}: {Path.GetFileName(imagePath)}");
                     }
                     Console.WriteLine();
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"  ? Error processing {Path.GetFileName(pdfFile)}: {ex.Message}");
+                Console.WriteLine($"  Error processing {Path.GetFileName(pdfFile)}: {ex.Message}");
                 Console.WriteLine();
             }
         }

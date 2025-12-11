@@ -32,6 +32,7 @@ class Program
         string pptxOutputDir = Path.Combine(solutionRoot, "Output", "PptxImages");
         string pdfOutputDir = Path.Combine(solutionRoot, "Output", "PdfImages");
         string pptOutputDir = Path.Combine(solutionRoot, "Output", "PptImages");
+        string pptxConvertedOutputDir = Path.Combine(solutionRoot, "Output", "PptxDocuments");
 
         Console.WriteLine($"Solution Root: {solutionRoot}");
         Console.WriteLine();
@@ -53,9 +54,10 @@ class Program
             Console.WriteLine("4. Extract images from all legacy Word files  (doc)");
             Console.WriteLine("5. Extract images from all legacy PPT files (ppt) ");
             Console.WriteLine("6. Run All");
+            Console.WriteLine("7. Convert legacy PPT files to PPTX (ppt -> pptx)");
             Console.WriteLine("0. Exit");
             Console.WriteLine();
-            Console.Write("Enter your choice (0-6): ");
+            Console.Write("Enter your choice (0-7): ");
 
             string? choice = Console.ReadLine();
 
@@ -78,6 +80,10 @@ class Program
                     break;
                 case "6":
                     RunAll(pptInputDir, docInputDir, docOutputDir, docxInputDir, docxOutputDir, pptxInputDir, pptxOutputDir, pdfInputDir, pdfOutputDir, pptOutputDir);
+                    break;
+                case "7":
+                    Console.WriteLine("Converting legacy PPT files to PPTX...");
+                    PptToPptxConverter.ConvertAll(pptInputDir, pptxConvertedOutputDir);
                     break;
                 case "0":
                     Console.WriteLine("Exiting...");

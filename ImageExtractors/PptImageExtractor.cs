@@ -1,6 +1,7 @@
 ﻿using DocSharp.Binary.PptFileFormat;
 using DocSharp.Binary.StructuredStorage.Reader;
-using System.Reflection;
+using Syncfusion.Drawing;
+
 
 
 namespace LegacyPowerPointGetImages;
@@ -14,32 +15,61 @@ public static class PptImageExtractor
         {
             using var reader = new StructuredStorageReader(pptStream);
             var pptDoc = new PowerpointDocument(reader);
-
+            string imageMediaType = Constants.MediaTypeConstants.MediaTypeUnknown;
+            byte[]? imageBytes = null;
             if (pptDoc.PicturesContainer != null)
             {
                 foreach (var pictureRecord in pptDoc.PicturesContainer._pictures.Values)
                 {
-                    string imageMediaType = Constants.MediaTypeConstants.MediaTypeUnknown;
-                    byte[]? imageBytes = null;
 
-                    using (var ms = new MemoryStream())
+                    
+                    if (pictureRecord.RawData != null)
                     {
-                        pictureRecord.DumpToStream(ms);
-                        imageBytes = ms.ToArray();
+
+                        
+
+                        //Code that appears to work to get image bytes, however images are coming not valid
+                        //Create a stream from the raw data bytes
+                        //using (var imageBytesStream = new MemoryStream(pictureRecord.RawData))
+                        //{
+                        //    imageBytes = imageBytesStream.ToArray();
+                        //    imageBytesStream.Position = 0; // Ensure stream is at beginning before creating Image
+                        //    var img = Image.FromStream(imageBytesStream);
+
+                        //        imageMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
+                        //        images.Add(new ExtractedImageInfo
+                        //        {
+                        //            ImageBytes = img.ImageData,
+                        //            ImageMediaType = imageMediaType
+                        //        });
+
+
+                        //}
+
+                        //Code that appears to work to get image bytes, however images are coming not valid
+                        //using (var ms = new MemoryStream())
+                        //{
+                        //    pictureRecord.DumpToStream(ms);
+                        //    imageBytes = ms.ToArray();
+                        //}
+
+                        //run the image bytes through the MediaTypeDetector to determine the actual image type
+                        //if (imageBytes != null)
+                        //{
+                        //   imageMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
+                        //   images.Add(new ExtractedImageInfo
+                        //    {
+                        //        ImageBytes = imageBytes,
+                        //        ImageMediaType = imageMediaType
+                        //    });
+                        //}
+
                     }
 
-                    //run the image bytes through the MediaTypeDetector to determine the actual image type
-                    if (imageBytes != null)
-                    {
-                       imageMediaType = MimeTypeDetector.GetImageMediaType(imageBytes);
-                       images.Add(new ExtractedImageInfo
-                        {
-                            ImageBytes = imageBytes,
-                            ImageMediaType = imageMediaType
-                        });
-                    }
+
                 }
             }
+            return images;
         }
         catch (Exception ex)
         {
@@ -90,7 +120,7 @@ public static class PptImageExtractor
 
                     if (images.Count == 0)
                     {
-                        Console.WriteLine("  No images found in this document.");
+                        Console.WriteLine("  No images processed from this document.");
                         Console.WriteLine();
                         continue;
                     }
@@ -100,35 +130,23 @@ public static class PptImageExtractor
                     int imageCount = 0;
                     foreach (var image in images)
                     {
-                        var conversion = ImageFormatConverter.ConvertToPng(image.ImageBytes, image.ImageMediaType);
-                        string extension;
-                        byte[] bytesToWrite;
-
-                        if (conversion.Success && conversion.ImageBytes != null)
-                        {
-                            extension = conversion.Extension;
-                            bytesToWrite = conversion.ImageBytes;
-                        }
-                        else
-                        {
-                            if (!conversion.Success)
-                                Console.WriteLine($"    ! Conversion failed: {conversion.ErrorMessage}");
-                            extension = ImageExtensionHelper.GetImageExtension(image.ImageMediaType);
-                            bytesToWrite = image.ImageBytes;
-                        }
+                        // Commented out conversion: save original bytes and extension
+                        // var conversion = ImageFormatConverter.ConvertToPng(image.ImageBytes, image.ImageMediaType);
+                        string extension = ImageExtensionHelper.GetImageExtension(image.ImageMediaType);
+                        byte[] bytesToWrite = image.ImageBytes;
 
                         imageCount++;
                         string fileName = Path.GetFileNameWithoutExtension(pptFile);
                         string imagePath = Path.Combine(pptOutputDir, $"{fileName}_Image_{imageCount}{extension}");
                         File.WriteAllBytes(imagePath, bytesToWrite);
-                        Console.WriteLine($"    ✓ Saved image {imageCount}: {Path.GetFileName(imagePath)}");
+                        Console.WriteLine($"    Saved image {imageCount}: {Path.GetFileName(imagePath)}");
                     }
                     Console.WriteLine();
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"  ✗ Error processing {Path.GetFileName(pptFile)}: {ex.Message}");
+                Console.WriteLine($"  Error processing {Path.GetFileName(pptFile)}: {ex.Message}");
                 Console.WriteLine();
             }
         }
