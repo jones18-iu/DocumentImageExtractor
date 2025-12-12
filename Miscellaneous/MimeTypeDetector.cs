@@ -8,7 +8,6 @@ using System;
 
 namespace LegacyPowerPointGetImages;
 
-
 /// <summary>
 /// Detects media (MIME) types from raw file bytes using signature heuristics.
 /// Notes on accuracy and limitations:
@@ -18,6 +17,54 @@ namespace LegacyPowerPointGetImages;
 /// </summary>
 public static class MimeTypeDetector
 {
+    // Helper struct for signature matching
+    private readonly struct Signature
+    {
+        public byte[] Pattern { get; }
+        public int? Offset { get; } // null = anywhere in window
+
+        public Signature(byte[] pattern, int? offset = null)
+        {
+            Pattern = pattern;
+            Offset = offset;
+        }
+    }
+
+    // Generalized signature matcher
+    private static bool MatchSignature(byte[] bytes, Signature sig, int scanLimit)
+    {
+        if (sig.Offset.HasValue)
+        {
+            int offset = sig.Offset.Value;
+            if (bytes.Length < offset + sig.Pattern.Length)
+                return false;
+            for (int i = 0; i < sig.Pattern.Length; i++)
+                if (bytes[offset + i] != sig.Pattern[i])
+                    return false;
+            return true;
+        }
+        else
+        {
+            // Search anywhere in scan window
+            int max = Math.Min(scanLimit, bytes.Length) - sig.Pattern.Length;
+            for (int i = 0; i <= max; i++)
+            {
+                bool match = true;
+                for (int j = 0; j < sig.Pattern.Length; j++)
+                {
+                    if (bytes[i + j] != sig.Pattern[j])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match)
+                    return true;
+            }
+            return false;
+        }
+    }
+
     /// <summary>
     /// Detects common image MIME types from byte signatures.
     /// Accuracy and limitations:
@@ -53,87 +100,56 @@ public static class MimeTypeDetector
     {
         int scanLimit = Math.Min(bytes.Length, 2 * 1024 * 1024); // Scan up to 2MB
 
-        // JFIF/EXIF (more specific JPEG variants): FF D8 FF E0 or FF D8 FF E1
-        if (ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }, scanLimit) ||
-            ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF, 0xE1 }, scanLimit))
-            return Constants.MediaTypeConstants.Jpeg;
+        // Define signatures
+        var jpegJfif = new Signature(new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 });
+        var jpegExif = new Signature(new byte[] { 0xFF, 0xD8, 0xFF, 0xE1 });
+        var jpeg = new Signature(new byte[] { 0xFF, 0xD8, 0xFF });
+        var png = new Signature(new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+        var gif = new Signature(new byte[] { 0x47, 0x49, 0x46 });
+        var tiffLe = new Signature(new byte[] { 0x49, 0x49, 0x2A, 0x00 });
+        var tiffBe = new Signature(new byte[] { 0x4D, 0x4D, 0x00, 0x2A });
+        var bmp = new Signature(new byte[] { 0x42, 0x4D });
+        var ico = new Signature(new byte[] { 0x00, 0x00, 0x01, 0x00 });
+        var svg = new Signature(new byte[] { 0x3C, 0x73, 0x76, 0x67 });
+        var emf = new Signature(new byte[] { 0x01, 0x00, 0x00, 0x00 });
+        var wmf = new Signature(new byte[] { 0xD7, 0xCD, 0xC6, 0x9A });
+        var dds = new Signature(new byte[] { 0x44, 0x44, 0x53, 0x20 });
+        var jpeg2000 = new Signature(new byte[] { 0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20 });
+        var pdfSig = new Signature(new byte[] { 0x25, 0x50, 0x44, 0x46, 0x2D }); // "%PDF-"
+        var zipSig = new Signature(new byte[] { 0x50, 0x4B, 0x03, 0x04 }, 0);
 
-        // JPEG: Starts with FF D8 FF
-        if (ContainsSequence(bytes, new byte[] { 0xFF, 0xD8, 0xFF }, scanLimit))
+        if (MatchSignature(bytes, jpegJfif, scanLimit) || MatchSignature(bytes, jpegExif, scanLimit))
             return Constants.MediaTypeConstants.Jpeg;
-
-        // PNG: Starts with 89 50 4E 47
-        if (ContainsSequence(bytes, new byte[] { 0x89, 0x50, 0x4E, 0x47 }, scanLimit))
+        if (MatchSignature(bytes, jpeg, scanLimit))
+            return Constants.MediaTypeConstants.Jpeg;
+        if (MatchSignature(bytes, png, scanLimit))
             return Constants.MediaTypeConstants.Png;
-
-        // GIF: Starts with 47 49 46 ("GIF")
-        if (ContainsSequence(bytes, new byte[] { 0x47, 0x49, 0x46 }, scanLimit))
+        if (MatchSignature(bytes, gif, scanLimit))
             return Constants.MediaTypeConstants.Gif;
-
-        // BMP: Starts with 42 4D ("BM")
-        if (ContainsSequence(bytes, new byte[] { 0x42, 0x4D }, scanLimit))
-            return Constants.MediaTypeConstants.Bmp;
-
-        // TIFF: Starts with either 49 49 2A 00 (little endian) or 4D 4D 00 2A (big endian)
-        if (ContainsSequence(bytes, new byte[] { 0x49, 0x49, 0x2A, 0x00 }, scanLimit) ||
-            ContainsSequence(bytes, new byte[] { 0x4D, 0x4D, 0x00, 0x2A }, scanLimit))
+        if (MatchSignature(bytes, tiffLe, scanLimit) || MatchSignature(bytes, tiffBe, scanLimit))
             return Constants.MediaTypeConstants.Tiff;
-
-        // WebP: Starts with "RIFF" (52 49 46 46) and "WEBP" (57 45 42 50) at offset 8
+        if (MatchSignature(bytes, bmp, scanLimit))
+            return Constants.MediaTypeConstants.Bmp;
         if (ContainsWebPSignature(bytes, scanLimit))
             return Constants.MediaTypeConstants.Webp;
-
-        // ICO: Starts with 00 00 01 00
-        if (ContainsSequence(bytes, new byte[] { 0x00, 0x00, 0x01, 0x00 }, scanLimit))
+        if (MatchSignature(bytes, ico, scanLimit))
             return Constants.MediaTypeConstants.Icon;
-
-        // SVG: Starts with "<svg" (3C 73 76 67)
-        if (ContainsSequence(bytes, new byte[] { 0x3C, 0x73, 0x76, 0x67 }, scanLimit))
+        if (MatchSignature(bytes, svg, scanLimit))
             return Constants.MediaTypeConstants.Svg;
-
-        // EMF (Enhanced Metafile): Starts with 01 00 00 00
-        if (ContainsSequence(bytes, new byte[] { 0x01, 0x00, 0x00, 0x00 }, scanLimit))
+        if (MatchSignature(bytes, emf, scanLimit))
             return Constants.MediaTypeConstants.Emf;
-
-        // WMF (Windows Metafile): Starts with D7 CD C6 9A
-        if (ContainsSequence(bytes, new byte[] { 0xD7, 0xCD, 0xC6, 0x9A }, scanLimit))
+        if (MatchSignature(bytes, wmf, scanLimit))
             return Constants.MediaTypeConstants.Wmf;
-
-        // DDS (DirectDraw Surface): Starts with "DDS " (20 53 44 44)
-        if (ContainsSequence(bytes, new byte[] { 0x44, 0x44, 0x53, 0x20 }, scanLimit))
+        if (MatchSignature(bytes, dds, scanLimit))
             return Constants.MediaTypeConstants.Dds;
-
-        // JPEG2000: Starts with 00 00 00 0C 6A 50 20 20
-        if (ContainsSequence(bytes, new byte[] { 0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20 }, scanLimit))
+        if (MatchSignature(bytes, jpeg2000, scanLimit))
             return Constants.MediaTypeConstants.Jpeg2000;
+        if (MatchSignature(bytes, pdfSig, 2 * 1024 * 1024))
+            return Constants.MediaTypeConstants.Pdf;
+        if (MatchSignature(bytes, zipSig, 4))
+            return Constants.MediaTypeConstants.MediaTypeUnknown; // Ambiguous, need more checks for OOXML
 
-        // Unknown type
         return Constants.MediaTypeConstants.MediaTypeUnknown;
-    }
-
-    /// <summary>
-    /// Searches for a byte sequence anywhere within the scan limit.
-    /// </summary>
-    private static bool ContainsSequence(byte[] bytes, byte[] sequence, int scanLimit)
-    {
-        if (bytes.Length < sequence.Length)
-            return false;
-
-        for (int i = 0; i <= Math.Min(scanLimit, bytes.Length) - sequence.Length; i++)
-        {
-            bool match = true;
-            for (int j = 0; j < sequence.Length; j++)
-            {
-                if (bytes[i + j] != sequence[j])
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match)
-                return true;
-        }
-        return false;
     }
 
     /// <summary>
@@ -187,7 +203,7 @@ public static class MimeTypeDetector
         {
             const string docStreamMarker = "WordDocument";
             const string pptStreamMarker = "PowerPoint Document";
-            var scanLength = Math.Min(bytes.Length, 2 * 1024 * 1024);
+            var scanLength = Math.Min(bytes.Length, 2 * 1024);
             var asciiText = System.Text.Encoding.ASCII.GetString(bytes, 0, scanLength);
             var utf16leText = System.Text.Encoding.Unicode.GetString(bytes, 0, scanLength);
 
@@ -207,7 +223,7 @@ public static class MimeTypeDetector
         // 3) Office Open XML (DOCX/PPTX): ZIP local file header "PK\x03\x04"
         if (bytes.Length >= 4 && bytes[0] == 0x50 && bytes[1] == 0x4B && bytes[2] == 0x03 && bytes[3] == 0x04)
         {
-            var scanLength = Math.Min(bytes.Length, 2 * 1024 * 1024);
+            var scanLength = Math.Min(bytes.Length, 2 * 1024);
             var text = System.Text.Encoding.ASCII.GetString(bytes, 0, scanLength);
             if (text.IndexOf("word/", StringComparison.OrdinalIgnoreCase) >= 0)
             {

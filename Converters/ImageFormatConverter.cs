@@ -17,8 +17,8 @@ public static class ImageFormatConverter
     {
         Constants.MediaTypeConstants.Png,
         Constants.MediaTypeConstants.Jpeg,
-        Constants.MediaTypeConstants.Webp,
-        Constants.MediaTypeConstants.Bmp
+        Constants.MediaTypeConstants.Webp
+
     };
 
     public static ConvertedImageResult ConvertToPng(byte[] imageBytes, string mediaType)
