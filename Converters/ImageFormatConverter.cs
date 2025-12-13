@@ -1,4 +1,7 @@
 using SkiaSharp;
+using System.IO;
+using TiffLibrary;
+using TiffLibrary.PixelFormats;
 
 namespace LegacyPowerPointGetImages;
 
@@ -17,7 +20,8 @@ public static class ImageFormatConverter
     {
         Constants.MediaTypeConstants.Png,
         Constants.MediaTypeConstants.Jpeg,
-        Constants.MediaTypeConstants.Webp
+        Constants.MediaTypeConstants.Webp,
+        Constants.MediaTypeConstants.Bmp
 
     };
 
@@ -40,7 +44,6 @@ public static class ImageFormatConverter
                 };
             }
 
-            // For all other formats, conversion is required
             // Handle GIF conversion
             if (detectedMediaType == Constants.MediaTypeConstants.Gif)
             {
@@ -79,36 +82,85 @@ public static class ImageFormatConverter
             // Handle TIFF conversion
             if (detectedMediaType == Constants.MediaTypeConstants.Tiff)
             {
-                using var bitmap = SKBitmap.Decode(imageBytes);
-                if (bitmap == null)
+                try
                 {
+                    // Use Task.Run to handle decoding since TiffLibrary has async-first API  
+                    var pngBytes = Task.Run(async () =>
+                    {
+                        using var memoryStream = new MemoryStream(imageBytes);
+                        using var tiffReader = TiffFileReader.Open(memoryStream, leaveOpen: false);
+                        
+                        var ifd = await tiffReader.ReadImageFileDirectoryAsync();
+                        
+                        // Get dimensions from IFD entries - for single-value long fields, value is in the offset
+                        var widthEntry = ifd.FindEntry(TiffTag.ImageWidth);
+                        var heightEntry = ifd.FindEntry(TiffTag.ImageLength);
+                        
+                        // Since ImageWidth/ImageLength are typically stored inline, read from ValueOffset
+                        // Convert the long offset to uint for width/height
+                        uint width = (uint)(widthEntry.ValueOffset & 0xFFFFFFFF);
+                        uint height = (uint)(heightEntry.ValueOffset & 0xFFFFFFFF);
+                        
+                        if (width == 0 || height == 0)
+                        {
+                            return null;
+                        }
+                        
+                        var decoder = await tiffReader.CreateImageDecoderAsync(ifd);
+                        
+                        // Decode to BGRA32 pixel format using TiffPixelBuffer.Wrap for writable buffer
+                        var pixelBuffer = new TiffBgra32[(int)width * (int)height];
+                        await decoder.DecodeAsync(TiffPixelBuffer.Wrap(pixelBuffer, (int)width, (int)height));
+                        
+                        // Convert to byte array
+                        var byteBuffer = new byte[pixelBuffer.Length * 4];
+                        System.Runtime.InteropServices.MemoryMarshal.AsBytes(pixelBuffer.AsSpan()).CopyTo(byteBuffer);
+                        
+                        // Create SKBitmap from pixel buffer
+                        using var bitmap = new SKBitmap((int)width, (int)height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                        unsafe
+                        {
+                            var pixels = bitmap.GetPixels();
+                            fixed (byte* srcPtr = byteBuffer)
+                            {
+                                Buffer.MemoryCopy(srcPtr, pixels.ToPointer(), byteBuffer.Length, byteBuffer.Length);
+                            }
+                        }
+                        
+                        using var image = SKImage.FromBitmap(bitmap);
+                        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+                        return data?.ToArray();
+                    }).GetAwaiter().GetResult();
+
+                    if (pngBytes == null)
+                    {
+                        return new ConvertedImageResult
+                        {
+                            ConversionStatus = "Failed",
+                            ErrorMessage = "Failed to decode or encode TIFF image.",
+                            OriginalMediaType = detectedMediaType,
+                            ConversionRequired = true
+                        };
+                    }
+
                     return new ConvertedImageResult
                     {
-                        ConversionStatus = "Failed",
-                        ErrorMessage = "Failed to decode TIFF image with SkiaSharp.",
+                        ConversionStatus = "Success",
+                        ImageBytes = pngBytes,
                         OriginalMediaType = detectedMediaType,
                         ConversionRequired = true
                     };
                 }
-                using var image = SKImage.FromBitmap(bitmap);
-                using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-                if (data == null)
+                catch (Exception ex)
                 {
                     return new ConvertedImageResult
                     {
                         ConversionStatus = "Failed",
-                        ErrorMessage = "Failed to encode TIFF as PNG with SkiaSharp.",
+                        ErrorMessage = $"Failed to decode TIFF image with TiffLibrary: {ex.Message}",
                         OriginalMediaType = detectedMediaType,
                         ConversionRequired = true
                     };
                 }
-                return new ConvertedImageResult
-                {
-                    ConversionStatus = "Success",
-                    ImageBytes = data.ToArray(),
-                    OriginalMediaType = detectedMediaType,
-                    ConversionRequired = true
-                };
             }
 
             // Attempt conversion for other types (ICO, etc.)
